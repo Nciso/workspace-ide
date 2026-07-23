@@ -5,6 +5,22 @@ AI. Your two jobs here are **define an app** and **operate an app**. Read **[PRD
 for the why and **[AGENT_SPEC.md](AGENT_SPEC.md)** for the agent/MCP contract; this file is
 the operational cheat-sheet.
 
+## Skills — use these, don't improvise
+
+This repo ships skills in `.claude/skills/`. Prefer them over ad-hoc work; they encode
+lessons that are expensive to rediscover.
+
+| Skill | When |
+| --- | --- |
+| **design-app** | the operator hasn't settled what to build — run *before* scaffolding |
+| **new-app** | create an app: scaffold, the four files, verify, report URLs |
+| **change-app** | modify an existing app: additive migrations, lockstep, what needs a restart |
+| **connect-agent** | wire the MCP server into Claude Code / Claude Desktop / Codex, and debug it |
+
+The whole loop is **design → build → operate → modify**, and it can happen in one Claude
+Code session: Claude Code speaks HTTP MCP natively, so the session that builds an app can
+also operate it (see connect-agent).
+
 ## Mental model
 
 - The repo root is the IDE. `main.go` is the **engine** (serves one app folder).
