@@ -13,7 +13,8 @@ working guide for an AI session: **[CLAUDE.md](CLAUDE.md)**.
 go build -o workspace .                         # the per-app engine
 go build -o supervisor ./cmd/supervisor         # the IDE host / router
 
-# admin login defaults to admin@example.com / changeme1234 — override for anything real:
+# Admin email defaults to admin@example.com. With no SUPERUSER_PASSWORD set, a random
+# password is generated and printed once at first boot. Set both to choose your own:
 SUPERUSER_EMAIL=you@co.com SUPERUSER_PASSWORD='strong-pass' ./supervisor
 ```
 

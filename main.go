@@ -14,7 +14,9 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -78,14 +80,18 @@ func main() {
 
 	// Ensure a default superuser (admin) exists so the build-mode dashboard at /_/ is
 	// reachable out of the box. Configurable via SUPERUSER_EMAIL / SUPERUSER_PASSWORD;
-	// created only if missing, never overwritten.
+	// created only if missing, never overwritten. With no password set we generate a
+	// random one and print it once, rather than shipping a known default credential.
 	adminEmail := envOr("SUPERUSER_EMAIL", "admin@example.com")
-	adminPass := envOr("SUPERUSER_PASSWORD", "changeme1234")
+	adminPass, generatedPass := os.Getenv("SUPERUSER_PASSWORD"), false
+	if adminPass == "" {
+		adminPass, generatedPass = randomSecret(12), true
+	}
 	app.OnBootstrap().BindFunc(func(e *core.BootstrapEvent) error {
 		if err := e.Next(); err != nil {
 			return err
 		}
-		ensureSuperuser(e.App, adminEmail, adminPass)
+		ensureSuperuser(e.App, adminEmail, adminPass, generatedPass)
 		return nil
 	})
 
@@ -421,10 +427,21 @@ func apiText(method, u string, body any) (string, error) {
 	return string(data), nil
 }
 
+// randomSecret returns a hex-encoded random string of n bytes.
+func randomSecret(n int) string {
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		log.Printf("randomSecret: %v", err)
+		return ""
+	}
+	return hex.EncodeToString(b)
+}
+
 // ensureSuperuser creates the default admin (_superusers) account if absent, so /_/ is
-// reachable on a fresh pb_data. Never overwrites an existing account.
-func ensureSuperuser(app core.App, email, password string) {
-	if email == "" {
+// reachable on a fresh pb_data. Never overwrites an existing account. When the password
+// was generated (no SUPERUSER_PASSWORD set) it is printed once, here.
+func ensureSuperuser(app core.App, email, password string, generated bool) {
+	if email == "" || password == "" {
 		return
 	}
 	if _, err := app.FindAuthRecordByEmail(core.CollectionNameSuperusers, email); err == nil {
@@ -442,7 +459,12 @@ func ensureSuperuser(app core.App, email, password string) {
 		log.Printf("superuser: create %s failed: %v", email, err)
 		return
 	}
-	log.Printf("created default superuser %s — sign in at /_/ and change the password", email)
+	if generated {
+		log.Printf("created superuser %s with a GENERATED password: %s", email, password)
+		log.Printf("  ^ save it now, or set SUPERUSER_PASSWORD to choose your own")
+	} else {
+		log.Printf("created superuser %s — sign in at /_/", email)
+	}
 }
 
 func envOr(k, d string) string {

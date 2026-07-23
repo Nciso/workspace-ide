@@ -76,4 +76,6 @@ go build ./... && go vet ./...
 - **Per-app tailored UI isn't built yet** — new apps share the embedded UI; operate them via
   MCP + the admin dashboard until the `web/`→`dist/` authoring flow lands.
 - `SUPERUSER_EMAIL` / `SUPERUSER_PASSWORD` are read by each engine (the supervisor forwards
-  its own environment to every engine it spawns). The default admin is created only if missing.
+  its own environment to every engine it spawns). The admin is created only if missing; with
+  no `SUPERUSER_PASSWORD` set, a random password is generated and printed once at first boot
+  (no default credential ships in the source).
