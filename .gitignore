@@ -1,0 +1,19 @@
+# local app state (regenerated from pb_migrations on boot)
+apps/*/pb_data/
+
+# per-app MCP bearer token (a local secret, generated on first run)
+apps/*/agent/.mcp_token
+
+# go
+/workspace
+/supervisor
+*.exe
+
+# node
+ui/node_modules/
+# NOTE: ui/dist/ is intentionally COMMITTED — the engine embeds it via go:embed, so a
+# fresh clone must have it to build. Rebuild with `cd ui && bun run build` (or npm).
+
+# logs / os
+*.log
+.DS_Store

@@ -1,0 +1,7 @@
+{
+  "defaults": { "read": false, "create": false, "update": false, "delete": false },
+  "collections": {
+    "opportunities": { "read": true, "create": true },
+    "companies": { "read": true }
+  }
+}
