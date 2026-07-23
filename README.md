@@ -26,7 +26,7 @@ browser; `:8080` is the router port.)
 | `http://sales.localhost:8080/` | app UI |
 | `http://sales.localhost:8080/_/` | admin dashboard (sign in with the superuser above) |
 | `http://sales.localhost:8080/api/*` | PocketBase REST |
-| `http://sales.localhost:8080/mcp` | per-app MCP server (bearer-authed) |
+| `http://localhost:8080/mcp/sales` | per-app MCP server (bearer-authed) — **note: bare `localhost`** |
 
 ## The two workflows
 
@@ -54,15 +54,47 @@ routed at `<name>.localhost`, with `/api`, `/_/`, and `/mcp` all live. Step-by-s
 ### 2. Operate an app — use it
 
 - **Directly**: the admin dashboard (`/_/`) and the REST API.
-- **With AI (the primary interface)**: connect the per-app **MCP server** to any MCP client
-  (Claude Desktop, ChatGPT, …). Endpoint `http://<name>.localhost:8080/mcp`; bearer token in
+- **With AI (the primary interface)**: connect the per-app **MCP server** to any MCP client.
+  Endpoint **`http://localhost:8080/mcp/<name>`**; bearer token in
   `apps/<name>/agent/.mcp_token`. Tools are generated from the schema, gated by
   `policy.json`, and executed through the app's own API (so its rules + validation apply).
 
+> **Why bare `localhost` and not `<name>.localhost`?** Browsers and curl map `*.localhost`
+> to loopback internally, but **Node does not** — `dns.lookup("sales.localhost")` returns
+> `ENOTFOUND`, which breaks every Node-based MCP client unless you edit `/etc/hosts` with
+> sudo. The MCP endpoint is therefore path-routed on bare `localhost`, which resolves
+> everywhere. The UI keeps the nicer `<name>.localhost` hostname.
+
+**Claude Code** — speaks HTTP MCP natively, no bridge:
+
 ```bash
-TOKEN=$(cat apps/sales/agent/.mcp_token)
-curl -s -H "Host: sales.localhost" -H "Authorization: Bearer $TOKEN" \
-  -H 'content-type: application/json' http://127.0.0.1:8080/mcp \
+claude mcp add --transport http sales http://localhost:8080/mcp/sales \
+  --header "Authorization: Bearer $(cat apps/sales/agent/.mcp_token)"
+```
+
+**Claude Desktop** — stdio only, so bridge with `mcp-remote` in
+`~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{ "mcpServers": { "sales": {
+  "command": "npx",
+  "args": ["-y", "mcp-remote", "http://localhost:8080/mcp/sales",
+           "--transport", "http-only", "--header", "Authorization:${AUTH}"],
+  "env": { "AUTH": "Bearer <paste apps/sales/agent/.mcp_token>" }
+} } }
+```
+
+`Authorization:${AUTH}` has **no space** after the colon — `mcp-remote` splits `--header`
+on whitespace. `--allow-http` is not needed here because the host is bare `localhost`.
+
+**Codex** — `~/.codex/config.toml`; recent versions take a streamable-HTTP `url` directly,
+older ones need the same `mcp-remote` stdio bridge. Check your installed version.
+
+Smoke-test without any client:
+
+```bash
+curl -s -H "Authorization: Bearer $(cat apps/sales/agent/.mcp_token)" \
+  -H 'content-type: application/json' http://localhost:8080/mcp/sales \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
 

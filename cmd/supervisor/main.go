@@ -88,8 +88,8 @@ func main() {
 		rt.reg[name+".localhost"] = a
 		rt.names = append(rt.names, name)
 		port++
-		log.Printf("app %-12s → http://%s.localhost%s  (engine :%d, mcp token %s…)",
-			name, name, portSuffix(listen), a.port, a.token[:6])
+		log.Printf("app %-12s ui http://%s.localhost%s · mcp http://localhost%s/mcp/%s · token apps/%s/agent/.mcp_token",
+			name, name, portSuffix(listen), portSuffix(listen), name, name)
 	}
 
 	srv := &http.Server{
@@ -118,6 +118,36 @@ func main() {
 }
 
 func (rt *router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Path-routed MCP: http://localhost:8080/mcp/<app>
+	//
+	// This is the address to give an MCP client. Bare "localhost" resolves everywhere,
+	// including Node's dns.lookup — "<app>.localhost" does NOT (browsers and curl map
+	// *.localhost to loopback internally; Node returns ENOTFOUND), which otherwise forces
+	// every operator to add an /etc/hosts entry with sudo just to connect a client.
+	// Being bare localhost also means mcp-remote accepts plain HTTP without --allow-http.
+	// Browsers keep using <app>.localhost for the UI, where the nicer hostname matters.
+	if rest, ok := strings.CutPrefix(r.URL.Path, "/mcp/"); ok {
+		name, _, _ := strings.Cut(rest, "/")
+		a := rt.reg[name+".localhost"]
+		if name == "" || a == nil {
+			http.NotFound(w, r)
+			return
+		}
+		if !rt.ensureUp(a) {
+			http.Error(w, "engine failed to start", http.StatusBadGateway)
+			return
+		}
+		if !authOK(r, a.token) {
+			w.Header().Set("WWW-Authenticate", "Bearer")
+			http.Error(w, "missing or invalid MCP bearer token", http.StatusUnauthorized)
+			return
+		}
+		rr := r.Clone(r.Context())
+		rr.URL.Path = "/mcp" // the engine only knows its own single endpoint
+		a.proxy.ServeHTTP(w, rr)
+		return
+	}
+
 	host := r.Host
 	if i := strings.IndexByte(host, ':'); i >= 0 {
 		host = host[:i] // strip port
@@ -127,16 +157,7 @@ func (rt *router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		rt.launcher(w) // ide.localhost + anything unmatched
 		return
 	}
-
-	// Lazy spawn on first request (PRD §11 open q: eager vs lazy → lazy).
-	a.start.Do(func() {
-		cmd := startEngine(rt.engineBin, a.dir, a.port)
-		a.mu.Lock()
-		a.cmd = cmd
-		a.mu.Unlock()
-		a.ready = cmd != nil && waitReady(a.port, 20*time.Second)
-	})
-	if !a.ready {
+	if !rt.ensureUp(a) {
 		http.Error(w, "engine failed to start", http.StatusBadGateway)
 		return
 	}
@@ -150,6 +171,19 @@ func (rt *router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a.proxy.ServeHTTP(w, r)
+}
+
+// ensureUp lazily spawns the app's engine on first use (PRD §11: eager vs lazy → lazy)
+// and reports whether it is serving.
+func (rt *router) ensureUp(a *app) bool {
+	a.start.Do(func() {
+		cmd := startEngine(rt.engineBin, a.dir, a.port)
+		a.mu.Lock()
+		a.cmd = cmd
+		a.mu.Unlock()
+		a.ready = cmd != nil && waitReady(a.port, 20*time.Second)
+	})
+	return a.ready
 }
 
 func authOK(r *http.Request, token string) bool {
@@ -210,11 +244,18 @@ func (rt *router) launcher(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	sfx := portSuffix(rt.listen)
 	var b strings.Builder
-	b.WriteString("<!doctype html><meta charset=utf-8><title>Workspace IDE</title><h1>Workspace IDE</h1><ul>")
+	b.WriteString("<!doctype html><meta charset=utf-8><title>Workspace IDE</title>" +
+		"<style>body{font:14px/1.6 system-ui;margin:2rem;max-width:46rem}" +
+		"code{background:#f4f4f5;padding:.1rem .3rem;border-radius:3px}" +
+		"li{margin:.6rem 0}</style><h1>Workspace IDE</h1><ul>")
 	for _, name := range rt.names {
-		fmt.Fprintf(&b, `<li><a href="http://%s.localhost%s/">%s</a></li>`, name, sfx, name)
+		fmt.Fprintf(&b,
+			`<li><a href="http://%s.localhost%s/">%s</a> · <a href="http://%s.localhost%s/_/">admin</a>`+
+				`<br><small>MCP <code>http://localhost%s/mcp/%s</code> — token in <code>apps/%s/agent/.mcp_token</code></small></li>`,
+			name, sfx, name, name, sfx, sfx, name, name)
 	}
-	b.WriteString("</ul>")
+	b.WriteString("</ul><p><small>Connect an MCP client to the address above; it is bare " +
+		"<code>localhost</code> on purpose, so no hosts-file entry is needed.</small></p>")
 	_, _ = w.Write([]byte(b.String()))
 }
 

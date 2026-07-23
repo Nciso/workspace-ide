@@ -66,9 +66,11 @@ SUPERUSER_EMAIL=you@co.com SUPERUSER_PASSWORD='strong' ./supervisor
 ```
 
 - App UI `http://<name>.localhost:8080/` · Admin `/_/` · REST `/api/*`
-- MCP `http://<name>.localhost:8080/mcp`, bearer in `apps/<name>/agent/.mcp_token` — paste
-  URL + token into an MCP client. Smoke-test with the `tools/list` / `tools/call` curl in
-  the README.
+- MCP **`http://localhost:8080/mcp/<name>`**, bearer in `apps/<name>/agent/.mcp_token`.
+  Bare `localhost` is deliberate: Node's `dns.lookup` does not resolve `*.localhost`, so a
+  host-routed MCP URL forces a sudo `/etc/hosts` edit on every machine. Claude Code connects
+  natively — `claude mcp add --transport http <name> http://localhost:8080/mcp/<name> --header "Authorization: Bearer $(cat apps/<name>/agent/.mcp_token)"`.
+  Claude Desktop needs the `mcp-remote` stdio bridge (see README).
 
 ## Verify any change
 
