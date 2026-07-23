@@ -1,0 +1,21 @@
+{
+  "name": "New app",
+  "views": [
+    {
+      "id": "board",
+      "type": "board",
+      "title": "Board",
+      "collection": "items",
+      "groupBy": "status",
+      "card": { "title": "title", "subtitle": "notes" }
+    },
+    {
+      "id": "items",
+      "type": "table",
+      "title": "Items",
+      "collection": "items",
+      "sort": "-created",
+      "columns": ["title", "notes", "status", "created"]
+    }
+  ]
+}

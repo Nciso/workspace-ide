@@ -8,7 +8,8 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
-dist
+# NOTE: dist/ is deliberately NOT ignored — the engine embeds it via go:embed, so a fresh
+# clone needs the built bundle to compile. (Vite's default template ignores it; we can't.)
 dist-ssr
 *.local
 

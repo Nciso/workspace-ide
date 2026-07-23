@@ -7,45 +7,72 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { workspace, formatValue, type ViewSpec } from "@/lib/workspace"
+import {
+  fieldLabel,
+  fieldType,
+  formatValue,
+  type Collection,
+  type ViewSpec,
+} from "@/lib/workspace"
 import type { PBRecord } from "@/lib/pb"
 
 export function TableView({
   spec,
+  collection,
   rows,
+  onSelect,
 }: {
   spec: Extract<ViewSpec, { type: "table" }>
+  collection: Collection | undefined
   rows: PBRecord[]
+  onSelect: (record: PBRecord) => void
 }) {
-  const collection = workspace.collections[spec.collection]
-  const fields = spec.columns.map((c) => collection.fields.find((f) => f.name === c)!)
+  const columns = spec.columns.map((name) => ({
+    name,
+    label: fieldLabel(collection, name),
+    type: fieldType(collection, spec, name),
+  }))
 
   return (
     <div className="rounded-lg border bg-card">
       <Table>
         <TableHeader>
           <TableRow>
-            {fields.map((f) => (
-              <TableHead key={f.name} className="whitespace-nowrap">
-                {f.label}
+            {columns.map((c) => (
+              <TableHead key={c.name} className="whitespace-nowrap">
+                {c.label}
               </TableHead>
             ))}
           </TableRow>
         </TableHeader>
         <TableBody>
           {rows.map((row) => (
-            <TableRow key={String(row.id)}>
-              {fields.map((f) => (
-                <TableCell key={f.name} className={f.type === "text" ? "font-medium" : ""}>
-                  {f.type === "select" ? (
-                    <Badge variant="secondary">{String(row[f.name])}</Badge>
+            <TableRow
+              key={String(row.id)}
+              onClick={() => onSelect(row)}
+              className="cursor-pointer"
+            >
+              {columns.map((c) => (
+                <TableCell key={c.name} className={c.type === "text" ? "font-medium" : ""}>
+                  {c.type === "select" && row[c.name] ? (
+                    <Badge variant="secondary">{String(row[c.name])}</Badge>
                   ) : (
-                    formatValue(f.type, row[f.name])
+                    formatValue(c.type, row[c.name])
                   )}
                 </TableCell>
               ))}
             </TableRow>
           ))}
+          {rows.length === 0 && (
+            <TableRow>
+              <TableCell
+                colSpan={columns.length}
+                className="h-24 text-center text-sm text-muted-foreground"
+              >
+                Nothing here yet.
+              </TableCell>
+            </TableRow>
+          )}
         </TableBody>
       </Table>
     </div>

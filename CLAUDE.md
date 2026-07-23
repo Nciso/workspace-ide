@@ -39,8 +39,21 @@ Then edit the three files:
    Tools are generated per allowed op: `list_/get_` (read), `create_`, `update_`, `delete_`.
 3. **Instructions** — `apps/<name>/agent/instructions.md`: persona + guardrails; state what
    the agent may **not** do.
-4. Schema auto-applies on engine boot (automigrate). Restart the supervisor to discover a
-   **new** app folder. No Go rebuild is needed for schema/policy/instructions changes.
+4. **Views** — `apps/<name>/views.json`: the operator UI, declared not coded. A `board`
+   groups a collection by one of its `select` fields (one column per option); a `table`
+   lists `columns`. Every view also takes:
+   - `filter` / `sort` — PocketBase expressions, applied server-side (what the view is *about*),
+   - `detail` — fields shown in full, with a copy button, when a record is opened,
+   - `actions` — declarative one-click writes: `set` (the token `@now` becomes a UTC
+     timestamp), `increment`, and `also` to patch the record across a relation in the same
+     click (e.g. mark a message sent *and* stamp its contact),
+   - `format` — per-view type overrides, e.g. draw a number as currency.
+
+   The engine serves it on `/manifest` and the embedded UI renders it, so **adding a view
+   or an action never means rebuilding `ui/dist`**. Omit the file and each collection gets a
+   plain table.
+5. Schema auto-applies on engine boot (automigrate). Restart the supervisor to discover a
+   **new** app folder. No Go rebuild is needed for schema/policy/instructions/views changes.
 
 Invariants (AGENT_SPEC §9): default-deny; destructive ops stay off unless intended; every
 field named in policy must exist on the collection; instructions must say what's forbidden.
@@ -73,8 +86,13 @@ go build ./... && go vet ./...
 - **Sync is NOT wired** — the engine runs plain SQLite. To turn it on, swap the DB to a
   libSQL embedded replica via PocketBase's `Config.DBConnect` (proven in a spike, PRD §6.4);
   needs a `sqld` primary + the CGO `go-libsql` driver.
-- **Per-app tailored UI isn't built yet** — new apps share the embedded UI; operate them via
-  MCP + the admin dashboard until the `web/`→`dist/` authoring flow lands.
+- **The UI is one shared bundle driven by per-app data** — `ui/dist` is generic; each app's
+  `views.json` (served on `/manifest`) tells it what to render, so one embedded bundle
+  serves every app. Clicking a row or card opens a detail sheet (full field values, copy
+  buttons on `detail` fields) with the view's `actions` as buttons — so marking work done is
+  a click, while **creating** records and free-form editing still go through MCP or the admin
+  dashboard. Rebuilding `ui/dist` is only needed when changing the *renderers*, never when
+  changing an app's views.
 - `SUPERUSER_EMAIL` / `SUPERUSER_PASSWORD` are read by each engine (the supervisor forwards
   its own environment to every engine it spawns). The admin is created only if missing; with
   no `SUPERUSER_PASSWORD` set, a random password is generated and printed once at first boot

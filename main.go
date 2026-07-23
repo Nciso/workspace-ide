@@ -26,6 +26,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/pocketbase/pocketbase"
@@ -179,12 +180,67 @@ func writableFields(app core.App, name string) map[string]string {
 	return out
 }
 
-func fieldProps(app core.App, name string) map[string]any {
-	props := map[string]any{}
-	for fname, ftype := range writableFields(app, name) {
-		props[fname] = map[string]any{"type": jsonType(ftype)}
+// fieldSchema derives a tool argument schema from one PocketBase field, and reports
+// whether the field is required. Every field type marshals itself together with its own
+// options ("values", "maxSelect", "required", …), so reading that JSON keeps this generic
+// instead of a type switch per field kind.
+//
+// Advertising `enum` for select fields is load-bearing: without it a caller only sees
+// "string" and has to guess the vocabulary, and every guess that misses the exact value
+// is rejected by the collection as "Invalid value x" (AGENT_SPEC §4.1: select→enum).
+func fieldSchema(app core.App, f core.Field) (map[string]any, bool) {
+	var opts map[string]any
+	if b, err := json.Marshal(f); err == nil {
+		_ = json.Unmarshal(b, &opts)
 	}
-	return props
+	required, _ := opts["required"].(bool)
+
+	item := map[string]any{"type": jsonType(f.Type())}
+	switch f.Type() {
+	case "select":
+		if vals, ok := opts["values"].([]any); ok && len(vals) > 0 {
+			item["enum"] = vals
+		}
+	case "relation":
+		target := "a related record"
+		if cid, ok := opts["collectionId"].(string); ok {
+			if rc, err := app.FindCollectionByNameOrId(cid); err == nil && rc != nil {
+				target = "a " + rc.Name + " record"
+			}
+		}
+		item["description"] = "id of " + target
+	case "date":
+		item["description"] = "UTC datetime, e.g. 2026-07-23 09:00:00"
+	}
+
+	// Multi-valued fields (maxSelect > 1) take a list, not a scalar.
+	if mv, ok := f.(core.MultiValuer); ok && mv.IsMultiple() {
+		return map[string]any{"type": "array", "items": item}, required
+	}
+	return item, required
+}
+
+// fieldProps returns the JSON Schema properties for a collection's agent-settable fields,
+// plus the names of the ones the collection insists on.
+func fieldProps(app core.App, name string) (map[string]any, []string) {
+	props := map[string]any{}
+	required := []string{}
+	c, err := app.FindCollectionByNameOrId(name)
+	if err != nil || c == nil {
+		return props, required
+	}
+	for _, f := range c.Fields {
+		n := f.GetName()
+		if n == "id" || f.Type() == "autodate" {
+			continue
+		}
+		schema, req := fieldSchema(app, f)
+		props[n] = schema
+		if req {
+			required = append(required, n)
+		}
+	}
+	return props, required
 }
 
 func buildTools(app core.App, workspaceAbs string) []map[string]any {
@@ -199,11 +255,21 @@ func buildTools(app core.App, workspaceAbs string) []map[string]any {
 		if rule.Read {
 			tools = append(tools,
 				map[string]any{
-					"name":        "list_" + name,
-					"description": "List records from the " + name + " collection.",
+					"name": "list_" + name,
+					"description": "List records from the " + name + " collection. Use `filter` to look a " +
+						"record up instead of paging through everything.",
 					"inputSchema": map[string]any{
 						"type": "object",
 						"properties": map[string]any{
+							"filter": map[string]any{
+								"type": "string",
+								"description": `PocketBase filter expression, e.g. jaro_user_id = "u_8812" ` +
+									`or status = "Draft" && due_at < "2026-07-24".`,
+							},
+							"sort": map[string]any{
+								"type":        "string",
+								"description": "Sort expression, e.g. -created or last_pinged_at.",
+							},
 							"limit": map[string]any{"type": "integer", "description": "Max records (default 50)."},
 						},
 					},
@@ -216,15 +282,18 @@ func buildTools(app core.App, workspaceAbs string) []map[string]any {
 			)
 		}
 		if rule.Create {
+			props, required := fieldProps(app, name)
 			tools = append(tools, map[string]any{
 				"name":        "create_" + name,
 				"description": "Create a record in the " + name + " collection.",
-				"inputSchema": map[string]any{"type": "object", "properties": fieldProps(app, name)},
+				"inputSchema": map[string]any{"type": "object", "properties": props, "required": required},
 			})
 		}
 		if rule.Update {
-			props := fieldProps(app, name)
+			props, _ := fieldProps(app, name)
 			props["id"] = map[string]any{"type": "string"}
+			// Updates are partial: only the id is mandatory, never the collection's
+			// required fields — those are already satisfied by the stored record.
 			tools = append(tools, map[string]any{
 				"name":        "update_" + name,
 				"description": "Update fields of a " + name + " record by id.",
@@ -256,15 +325,51 @@ func buildManifest(app core.App, workspaceDir string) map[string]any {
 				if f.GetName() == "id" {
 					continue
 				}
-				fields = append(fields, map[string]any{"name": f.GetName(), "type": f.Type()})
+				fd := map[string]any{"name": f.GetName(), "type": f.Type()}
+				// A board view builds one column per select option, so the renderer
+				// needs the vocabulary, not just the type.
+				if f.Type() == "select" {
+					var opts map[string]any
+					if b, err := json.Marshal(f); err == nil {
+						_ = json.Unmarshal(b, &opts)
+					}
+					if vals, ok := opts["values"].([]any); ok {
+						fd["values"] = vals
+					}
+				}
+				fields = append(fields, fd)
 			}
 			collections = append(collections, map[string]any{"name": c.Name, "fields": fields})
 		}
 	}
-	return map[string]any{
+	m := map[string]any{
 		"name":        filepath.Base(workspaceDir),
 		"collections": collections,
 	}
+	// views.json is authored per app, like the schema and the policy — the UI renders
+	// whatever it describes, so adding a view never means rebuilding the bundle.
+	if v := loadViews(workspaceDir); v != nil {
+		if name, ok := v["name"].(string); ok && name != "" {
+			m["name"] = name
+		}
+		m["views"] = v["views"]
+	}
+	return m
+}
+
+// loadViews reads the app's authored view spec; a missing or malformed file just means
+// the UI falls back to rendering a plain table per collection.
+func loadViews(workspaceDir string) map[string]any {
+	b, err := os.ReadFile(filepath.Join(workspaceDir, "views.json"))
+	if err != nil {
+		return nil
+	}
+	var v map[string]any
+	if err := json.Unmarshal(b, &v); err != nil {
+		log.Printf("views.json: %v (ignored)", err)
+		return nil
+	}
+	return v
 }
 
 // ---- minimal MCP server -----------------------------------------------------
@@ -342,7 +447,18 @@ func callTool(app core.App, workspaceAbs, name string, args map[string]any) (str
 		if v, ok := args["limit"].(float64); ok && v > 0 {
 			limit = int(v)
 		}
-		return apiText("GET", fmt.Sprintf("%s?perPage=%d&skipTotal=1", recordURL(coll, ""), limit), nil)
+		// filter/sort are passed to the collection API, which parses and validates them —
+		// a bad expression comes back as the API's own 400, not a silent full listing.
+		q := url.Values{}
+		q.Set("perPage", strconv.Itoa(limit))
+		q.Set("skipTotal", "1")
+		if f, ok := args["filter"].(string); ok && f != "" {
+			q.Set("filter", f)
+		}
+		if s, ok := args["sort"].(string); ok && s != "" {
+			q.Set("sort", s)
+		}
+		return apiText("GET", recordURL(coll, "")+"?"+q.Encode(), nil)
 	}
 
 	if coll, ok := strings.CutPrefix(name, "get_"); ok {

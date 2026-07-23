@@ -1,0 +1,49 @@
+{
+  "name": "Sales",
+  "views": [
+    {
+      "id": "pipeline",
+      "type": "board",
+      "title": "Pipeline",
+      "collection": "opportunities",
+      "groupBy": "stage",
+      "card": {
+        "title": "name",
+        "subtitle": "company",
+        "badge": "value"
+      },
+      "format": {
+        "value": "currency"
+      }
+    },
+    {
+      "id": "opportunities",
+      "type": "table",
+      "title": "Opportunities",
+      "collection": "opportunities",
+      "columns": [
+        "name",
+        "company",
+        "value",
+        "stage",
+        "owner",
+        "close_date"
+      ],
+      "format": {
+        "value": "currency"
+      }
+    },
+    {
+      "id": "companies",
+      "type": "table",
+      "title": "Companies",
+      "collection": "companies",
+      "columns": [
+        "name",
+        "industry",
+        "contact",
+        "email"
+      ]
+    }
+  ]
+}
