@@ -26,6 +26,8 @@ migrate(
           values: ["Open", "Doing", "Done"],
         },
         { type: "autodate", name: "created", onCreate: true },
+        // Stamped by the "Mark done" action in views.json via the "@now" token.
+        { type: "date", name: "done_at" },
       ],
     })
     app.save(items)

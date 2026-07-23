@@ -2,20 +2,39 @@
   "name": "New app",
   "views": [
     {
+      "id": "queue",
+      "type": "table",
+      "title": "To do",
+      "collection": "items",
+      "filter": "status != \"Done\"",
+      "sort": "created",
+      "columns": ["title", "status", "created"],
+      "detail": ["notes"],
+      "actions": [
+        { "label": "Mark done", "set": { "status": "Done", "done_at": "@now" } },
+        { "label": "Start", "variant": "secondary", "set": { "status": "Doing" } }
+      ]
+    },
+    {
       "id": "board",
       "type": "board",
       "title": "Board",
       "collection": "items",
       "groupBy": "status",
-      "card": { "title": "title", "subtitle": "notes" }
+      "card": { "title": "title", "subtitle": "notes" },
+      "detail": ["notes"],
+      "actions": [
+        { "label": "Mark done", "set": { "status": "Done", "done_at": "@now" } }
+      ]
     },
     {
       "id": "items",
       "type": "table",
-      "title": "Items",
+      "title": "All items",
       "collection": "items",
       "sort": "-created",
-      "columns": ["title", "notes", "status", "created"]
+      "columns": ["title", "notes", "status", "created", "done_at"],
+      "detail": ["notes"]
     }
   ]
 }
