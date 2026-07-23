@@ -18,6 +18,16 @@ the operational cheat-sheet.
 
 ## Define an app
 
+Fastest path — copy the template (folders under `apps/` starting with `_` or `.` are
+skipped by the supervisor, so the template never runs as an app):
+
+```bash
+cp -R apps/_template apps/<name>
+mv apps/<name>/pb_migrations/1700000000_init.js "apps/<name>/pb_migrations/$(date +%s)_init.js"
+```
+
+Then edit the three files:
+
 1. **Schema** — `apps/<name>/pb_migrations/<unix_ts>_init.js`: collections + fields. Keep
    rules open (`listRule/viewRule/createRule/updateRule/deleteRule: ""`) for the single
    local operator. Model it on `apps/sales/pb_migrations/1700000000_init_sales.js`.

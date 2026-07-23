@@ -41,6 +41,10 @@ apps/<name>/
   pb_data/                     # this instance's SQLite (gitignored, auto-created)
 ```
 
+Start from the skeleton — `cp -R apps/_template apps/<name>` (see
+[apps/_template/README.md](apps/_template/README.md)). Folders under `apps/` beginning with
+`_` or `.` are templates and are skipped by the supervisor.
+
 Edit `pb_migrations` to shape the data model (auto-applied on boot); scope the AI's powers
 in `policy.json` (**default-deny**). Restart the supervisor and the new app is discovered,
 routed at `<name>.localhost`, with `/api`, `/_/`, and `/mcp` all live. Step-by-step in

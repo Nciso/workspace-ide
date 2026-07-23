@@ -77,6 +77,10 @@ func main() {
 			continue
 		}
 		name := en.Name()
+		// "_"/"." prefixed folders are templates or scratch, not apps (see apps/_template).
+		if strings.HasPrefix(name, "_") || strings.HasPrefix(name, ".") {
+			continue
+		}
 		a := &app{name: name, dir: filepath.Join(appsDir, name), port: port, token: mcpToken(filepath.Join(appsDir, name))}
 		target := &url.URL{Scheme: "http", Host: fmt.Sprintf("127.0.0.1:%d", a.port)}
 		a.proxy = httputil.NewSingleHostReverseProxy(target)

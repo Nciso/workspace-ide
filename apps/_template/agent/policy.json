@@ -1,0 +1,6 @@
+{
+  "defaults": { "read": false, "create": false, "update": false, "delete": false },
+  "collections": {
+    "items": { "read": true, "create": true }
+  }
+}
